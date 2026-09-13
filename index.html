@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GW2 Trading Post Trader Dashboard</title>
+<style>
+:root{
+  --bg:#08111f;--panel:#101826;--panel2:#0c1422;--line:#263447;
+  --text:#e7edf5;--muted:#93a4b8;--blue:#5ca9ff;--buy:#39d98a;--sell:#ff6b6b;
+  --gold:#ffd166;--warn:#ffb020;--bad:#ff5d73;--good:#39d98a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(180deg,#07101c,#0b1422 45%,#08111f);color:var(--text);
+font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:1600px;margin:auto;padding:18px}
+h1{margin:0;font-size:29px;letter-spacing:-.4px}.sub{color:var(--muted);margin:4px 0 18px}
+.panel{background:rgba(16,24,38,.98);border:1px solid var(--line);border-radius:15px;padding:14px;margin-bottom:14px;box-shadow:0 12px 30px rgba(0,0,0,.18)}
+.controls{display:grid;grid-template-columns:repeat(8,minmax(120px,1fr));gap:10px;align-items:end}
+label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px}
+input,select{width:100%;padding:9px 10px;border-radius:9px;border:1px solid #33435a;background:#08111f;color:var(--text)}
+button{border:0;border-radius:9px;padding:10px 13px;font-weight:750;cursor:pointer}
+.primary{background:var(--blue);color:#06111e}.ghost{background:#223047;color:var(--text)}.danger{background:#451d26;color:#ffd7dd}
+.status{margin-top:9px;color:var(--muted);font-size:12px}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:9px}
+.kpi{background:#0a1320;border:1px solid var(--line);border-radius:11px;padding:11px}
+.kpi span{font-size:11px;color:var(--muted)}.kpi b{display:block;margin-top:3px;font-size:19px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.tab{background:#1b293d;color:#cbd5e1}.tab.active{background:#30415a;color:#fff}
+.view{display:none}.view.active{display:block}
+.topcards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.card{background:#0a1320;border:1px solid var(--line);border-radius:14px;padding:13px;position:relative}
+.cardhead{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}
+.itemname{font-size:17px;font-weight:800}.meta{font-size:11px;color:var(--muted)}
+.tradegrid{display:grid;grid-template-columns:1fr 40px 1fr;gap:9px;align-items:stretch}
+.tradebox{border-radius:12px;padding:12px;border:1px solid var(--line)}
+.buybox{background:rgba(57,217,138,.08);border-color:rgba(57,217,138,.35)}
+.sellbox{background:rgba(255,107,107,.08);border-color:rgba(255,107,107,.35)}
+.label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.price{font-size:27px;font-weight:900;line-height:1.1;margin-top:5px}
+.buybox .price{color:var(--buy)}.sellbox .price{color:var(--sell)}
+.arrow{display:flex;align-items:center;justify-content:center;color:#64748b;font-size:22px}
+.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:10px}
+.metric{background:#0e1928;border-radius:9px;padding:8px;border:1px solid #1f2b3c}
+.metric span{font-size:10px;color:var(--muted)}.metric b{display:block;margin-top:2px;font-size:13px}
+.roi{color:var(--buy)!important}.gold{color:var(--gold)!important}.warn{color:var(--warn)!important}.bad{color:var(--bad)!important}
+.actionline{margin-top:10px;background:#0e1928;border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.actionline strong{color:#fff}.pill{padding:4px 8px;border-radius:999px;font-size:11px;border:1px solid var(--line);background:#101b2b}
+.pill.good{border-color:#215f47;color:#9bf0c8}.pill.warn{border-color:#6e5420;color:#ffd98a}.pill.bad{border-color:#6d2b37;color:#ffb0bd}
+.copy{font-size:11px;padding:6px 8px;background:#25344b;color:#dfe8f4}
+.star{cursor:pointer;font-size:19px;color:#66768c}.star.on{color:var(--gold)}
+.tablewrap{overflow:auto;max-height:680px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:8px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}
+th{position:sticky;top:0;background:#101826;color:#cad6e5;z-index:3}
+th:nth-child(2),td:nth-child(2){text-align:left}
+.buycol{color:var(--buy);font-weight:800}.sellcol{color:var(--sell);font-weight:800}
+.scorebar{height:7px;background:#1c293b;border-radius:999px;overflow:hidden;min-width:80px}
+.scorefill{height:100%;background:linear-gradient(90deg,#4f86ff,#39d98a)}
+.alertrow{background:rgba(57,217,138,.045)}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}.chartbox{background:#0a1320;border:1px solid var(--line);border-radius:10px;padding:11px}
+canvas{width:100%;height:230px}
+.help{font-size:12px;color:var(--muted);line-height:1.55}
+.searchrow{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:10px}.searchrow>div{min-width:180px}
+.alerts{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+.alertpill{padding:6px 8px;border-radius:8px;background:#0d1f1a;border:1px solid #22543d;color:#a7f3d0;font-size:11px}
+.empty{text-align:center!important;color:var(--muted);padding:20px!important}
+.small{font-size:10px;color:var(--muted)}
+@media(max-width:1100px){
+ .controls{grid-template-columns:repeat(2,1fr)}.kpis{grid-template-columns:repeat(2,1fr)}.topcards{grid-template-columns:1fr}
+ .metrics{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}.wrap{padding:10px}
+}
+</style>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#08111f">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+</head>
+<body>
+<div class="wrap">
+  <h1>GW2 Trading Post Trader Dashboard</h1>
+  <div class="sub">Ontworpen voor één vraag: <b>wat moet ik kopen, voor hoeveel, en tegen welke prijs moet ik verkopen?</b></div>
+
+  <div class="panel">
+    <div class="controls">
+      <div><label>Kapitaal (g)</label><input id="capital" type="number" value="100"></div>
+      <div><label>Min. ROI %</label><input id="minRoi" type="number" step=".1" value="8"></div>
+      <div><label>Min. buy volume</label><input id="minBuyVol" type="number" value="500"></div>
+      <div><label>Min. sell volume</label><input id="minSellVol" type="number" value="500"></div>
+      <div><label>Max prijs/item (g)</label><input id="maxPrice" type="number" step=".5" value="10"></div>
+      <div><label>Max positie/item %</label><input id="maxPos" type="number" value="20"></div>
+      <div><label>Max aantal/item</label><input id="maxQty" type="number" value="250"></div>
+      <div><label>Min. Flip Score</label><input id="minScore" type="number" value="45"></div>
+      <div><label>Alert ROI %</label><input id="alertRoi" type="number" value="20"></div>
+      <div><label>Alert winst/positie (g)</label><input id="alertProfit" type="number" step=".1" value="2"></div>
+      <div><label>Sorteren op</label>
+        <select id="sortBy"><option value="score">Flip Score</option><option value="roi">ROI</option><option value="profit">Winst positie</option><option value="liquidity">Liquiditeit</option></select>
+      </div>
+      <div><button class="primary" id="refreshBtn">Vernieuw live data</button></div>
+      <div><button class="ghost" id="saveBtn">Bewaar instellingen</button></div>
+      <div><button class="ghost" id="notifyBtn">Browsermeldingen</button></div>
+      <div><label>Auto-refresh</label>
+        <select id="autoRefresh">
+          <option value="0">Uit</option>
+          <option value="5">Elke 5 min</option>
+          <option value="10" selected>Elke 10 min</option>
+          <option value="15">Elke 15 min</option>
+        </select>
+      </div>
+      <div><label>Geluid bij alert</label>
+        <select id="soundAlert">
+          <option value="on" selected>Aan</option>
+          <option value="off">Uit</option>
+        </select>
+      </div>
+
+    </div>
+    <div id="status" class="status">Live data wordt geladen…</div>
+    <div id="alertBox" class="alerts"></div>
+  </div>
+
+  <div class="panel">
+    <div class="kpis">
+      <div class="kpi"><span>Items gescand</span><b id="scanned">0</b></div>
+      <div class="kpi"><span>Geschikte flips</span><b id="eligible">0</b></div>
+      <div class="kpi"><span>Beste Flip Score</span><b id="bestScore">—</b></div>
+      <div class="kpi"><span>Top 10 inzet</span><b id="invested">—</b></div>
+      <div class="kpi"><span>Winst/ronde Top 10</span><b id="profit">—</b></div>
+      <div class="kpi"><span>Lokale snapshots</span><b id="snapCount">0</b></div><div class="kpi"><span>Volgende refresh</span><b id="countdown">—</b></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="tabs">
+      <button class="tab active" data-tab="now">Nu handelen</button>
+      <button class="tab" data-tab="all">Alle kansen</button>
+      <button class="tab" data-tab="fav">Favorieten</button>
+      <button class="tab" data-tab="hist">Historie</button>
+      <button class="tab" data-tab="help">Uitleg</button>
+    </div>
+
+    <div id="now" class="view active">
+      <div id="topCards" class="topcards"></div>
+    </div>
+
+    <div id="all" class="view">
+      <div class="searchrow">
+        <div><label>Zoek item</label><input id="search" placeholder="bijv. Mithril"></div>
+        <div><label>Max resultaten</label><select id="limit"><option>25</option><option selected>50</option><option>100</option></select></div>
+      </div>
+      <div class="tablewrap"><table>
+        <thead><tr>
+          <th>★</th><th>Item</th><th>KOOP</th><th>VERKOOP</th><th>Winst/st.</th><th>ROI</th><th>Score</th>
+          <th>Buy vol.</th><th>Sell vol.</th><th>Buy Δ</th><th>Sell Δ</th><th>Aantal</th><th>Positiewinst</th><th>Risico</th>
+        </tr></thead>
+        <tbody id="allRows"></tbody>
+      </table></div>
+    </div>
+
+    <div id="fav" class="view">
+      <div class="tablewrap"><table>
+        <thead><tr><th>★</th><th>Item</th><th>KOOP</th><th>VERKOOP</th><th>ROI</th><th>Score</th><th>Aantal</th><th>Positiewinst</th></tr></thead>
+        <tbody id="favRows"></tbody>
+      </table></div>
+    </div>
+
+    <div id="hist" class="view">
+      <div class="searchrow">
+        <div><label>Item ID of exacte naam</label><input id="historyItem" placeholder="bijv. 19700 of Mithril Ingot"></div>
+        <button class="ghost" id="drawBtn">Toon historie</button>
+        <button class="danger" id="clearHistBtn">Wis historie</button>
+      </div>
+      <div id="histSummary" class="status"></div>
+      <div class="charts">
+        <div class="chartbox"><b>Buy / Sell prijs</b><canvas id="priceChart" width="700" height="230"></canvas></div>
+        <div class="chartbox"><b>Buy / Sell volume</b><canvas id="volumeChart" width="700" height="230"></canvas></div>
+      </div>
+    </div>
+
+    <div id="help" class="view help">
+      <p><b>KOOP</b> = de maximale buy-orderprijs die de scanner nu adviseert. <b>VERKOOP</b> = de huidige sell-listingprijs waarop de berekening is gebaseerd.</p>
+      <p><b>Nettowinst</b> = verkoopprijs × 0,85 − koopprijs. De 15% Trading Post-kosten zijn dus verwerkt.</p>
+      <p><b>Flip Score (0–100)</b> combineert ROI, orderboekliquiditeit, spreadkwaliteit, positiewinst en stabiliteit ten opzichte van de vorige snapshot. Daardoor komen extreem hoge maar onrealistische margins minder snel bovenaan.</p>
+      <p><b>Risico</b> is een praktische indicatie: laag bij hoge liquiditeit en gezonde spread, middel bij matige liquiditeit of grote bewegingen, hoog bij dunne/orderboekgevoelige items.</p>
+      <p><b>Buy Δ / Sell Δ</b> zijn veranderingen in orderboekhoeveelheden ten opzichte van de vorige lokale snapshot. Dit is nuttige activiteitsschatting, maar géén echte 24-uurs transactietelling.</p>
+      <p><b>Historie</b> wordt lokaal in je browser opgebouwd. De officiële GW2 API biedt geen volledige historische transactiereeks.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const SETTINGS_KEY="gw2-trader-settings-v3", FAV_KEY="gw2-trader-favs-v1", HIST_KEY="gw2-trader-history-v3";
+let current=[], previousMap=new Map();
+
+function fmtG(c,d=4){return (c/10000).toFixed(d)+"g"}
+function fmtInt(n){return new Intl.NumberFormat("nl-NL").format(Math.round(n||0))}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function clamp(x,a,b){return Math.max(a,Math.min(b,x))}
+function getSettings(){return {
+ capital:+$("capital").value||100,minRoi:(+$("minRoi").value||0)/100,minBuyVol:+$("minBuyVol").value||0,
+ minSellVol:+$("minSellVol").value||0,maxPrice:(+$("maxPrice").value||99999)*10000,maxPos:(+$("maxPos").value||20)/100,
+ maxQty:+$("maxQty").value||250,minScore:+$("minScore").value||0,alertRoi:(+$("alertRoi").value||20)/100,
+ alertProfit:(+$("alertProfit").value||2)*10000,sortBy:$("sortBy").value
+}}
+function saveSettings(){
+ const ids=["capital","minRoi","minBuyVol","minSellVol","maxPrice","maxPos","maxQty","minScore","alertRoi","alertProfit","sortBy","autoRefresh","soundAlert"];
+ const o={};ids.forEach(id=>o[id]=$(id).value);localStorage.setItem(SETTINGS_KEY,JSON.stringify(o));$("status").textContent="Instellingen opgeslagen."
+}
+function loadSettings(){try{const o=JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}");Object.entries(o).forEach(([k,v])=>{if($(k))$(k).value=v})}catch(e){}}
+function favs(){try{return new Set(JSON.parse(localStorage.getItem(FAV_KEY)||"[]"))}catch(e){return new Set()}}
+function setFavs(s){localStorage.setItem(FAV_KEY,JSON.stringify([...s]))}
+function toggleFav(id){const s=favs();s.has(id)?s.delete(id):s.add(id);setFavs(s);renderAll()}
+function copyText(t){navigator.clipboard?.writeText(t);$("status").textContent="Gekopieerd: "+t}
+
+async function j(url){const r=await fetch(url);if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+function chunks(a,n){let o=[];for(let i=0;i<a.length;i+=n)o.push(a.slice(i,i+n));return o}
+async function fetchNames(ids){
+ const m=new Map(),cs=chunks(ids,200);
+ for(let i=0;i<cs.length;i++){ $("status").textContent=`Itemnamen laden ${i+1}/${cs.length}…`;
+  const a=await j("https://api.guildwars2.com/v2/items?ids="+cs[i].join(","));a.forEach(x=>m.set(x.id,x.name))}
+ return m
+}
+
+function loadHistory(){try{return JSON.parse(localStorage.getItem(HIST_KEY)||"[]")}catch(e){return []}}
+function saveHistory(h){localStorage.setItem(HIST_KEY,JSON.stringify(h.slice(-60)));$("snapCount").textContent=h.slice(-60).length}
+function priorMap(){const h=loadHistory();if(!h.length)return new Map();return new Map(h[h.length-1].items.map(x=>[x.id,x]))}
+function appendSnapshot(items){
+ const h=loadHistory();h.push({t:Date.now(),items:items.slice(0,180).map(x=>({id:x.id,n:x.name,b:x.buy,s:x.sell,bv:x.buyVol,sv:x.sellVol,r:x.roi,sc:x.flipScore}))});saveHistory(h)
+}
+function delta(x){const p=previousMap.get(x.id);return p?{bd:x.buyVol-p.bv,sd:x.sellVol-p.sv,bp:x.buy-p.b,sp:x.sell-p.s}:{bd:null,sd:null,bp:null,sp:null}}
+function dtext(v){return v===null?"—":(v>0?"+":"")+fmtInt(v)}
+
+function computeScore(x){
+ const d=delta(x);
+ const roiScore=clamp((x.roi/0.30)*35,0,35);
+ const liq=Math.min(x.buyVol,x.sellVol);
+ const liqScore=clamp(Math.log10(1+liq)/5*25,0,25);
+ const spreadPct=(x.sell-x.buy)/x.buy;
+ const spreadScore=clamp((spreadPct/0.40)*15,0,15);
+ const profitScore=clamp((x.profit/10000)/5*15,0,15);
+ let stability=10;
+ if(d.bp!==null){
+   const move=(Math.abs(d.bp)+Math.abs(d.sp))/(2*Math.max(1,x.buy));
+   stability=clamp(10-move*80,0,10);
+ }
+ return Math.round(roiScore+liqScore+spreadScore+profitScore+stability)
+}
+function riskLabel(x){
+ const liq=Math.min(x.buyVol,x.sellVol), d=delta(x);
+ let pts=0;if(liq<1000)pts+=2;else if(liq<5000)pts+=1;
+ if(x.roi>0.35)pts+=1;
+ if(d.bp!==null&&Math.abs(d.bp)/Math.max(1,x.buy)>.08)pts+=2;
+ if(pts>=3)return ["Hoog","bad"];if(pts>=1)return ["Middel","warn"];return ["Laag","good"]
+}
+function breakevenSell(x){return Math.ceil(x.buy/0.85)}
+function actionCard(x,i){
+ const d=delta(x),[risk,cls]=riskLabel(x),f=favs().has(x.id);
+ return `<div class="card ${x.roi>=getSettings().alertRoi&&x.profit>=getSettings().alertProfit?"alertrow":""}">
+  <div class="cardhead">
+   <div><div class="itemname">${i+1}. ${esc(x.name)}</div><div class="meta">ID ${x.id} • Flip Score ${x.flipScore}/100</div></div>
+   <span class="star ${f?"on":""}" onclick="toggleFav(${x.id})">${f?"★":"☆"}</span>
+  </div>
+  <div class="tradegrid">
+    <div class="tradebox buybox"><div class="label">KOOP / Buy order</div><div class="price">${fmtG(x.buy,4)}</div>
+      <div class="small">maximaal deze prijs</div><button class="copy" onclick="copyText('${fmtG(x.buy,4)}')">Kopieer koopprijs</button></div>
+    <div class="arrow">→</div>
+    <div class="tradebox sellbox"><div class="label">VERKOOP / Sell listing</div><div class="price">${fmtG(x.sell,4)}</div>
+      <div class="small">doelprijs</div><button class="copy" onclick="copyText('${fmtG(x.sell,4)}')">Kopieer verkoopprijs</button></div>
+  </div>
+  <div class="metrics">
+   <div class="metric"><span>ROI</span><b class="roi">${(x.roi*100).toFixed(1)}%</b></div>
+   <div class="metric"><span>Winst / stuk</span><b class="gold">${fmtG(x.net,4)}</b></div>
+   <div class="metric"><span>Aantal</span><b>${fmtInt(x.qty)}</b></div>
+   <div class="metric"><span>Positiewinst</span><b class="gold">${fmtG(x.profit,2)}</b></div>
+   <div class="metric"><span>Risico</span><b class="${cls}">${risk}</b></div>
+  </div>
+  <div class="actionline">
+   <strong>Actie:</strong> plaats <b>${fmtInt(x.qty)}×</b> buy order op <b class="roi">${fmtG(x.buy,4)}</b> en verkoop rond <b class="bad">${fmtG(x.sell,4)}</b>.
+   <span class="pill">Break-even sell ${fmtG(breakevenSell(x),4)}</span>
+   <span class="pill">Buy vol ${fmtInt(x.buyVol)}</span><span class="pill">Sell vol ${fmtInt(x.sellVol)}</span>
+   <span class="pill ${d.bd<0?"warn":""}">Buy Δ ${dtext(d.bd)}</span><span class="pill ${d.sd<0?"warn":""}">Sell Δ ${dtext(d.sd)}</span>
+  </div>
+ </div>`
+}
+function sortData(a){
+ const s=getSettings().sortBy;
+ return [...a].sort((x,y)=>s==="roi"?y.roi-x.roi:s==="profit"?y.profit-x.profit:s==="liquidity"?Math.min(y.buyVol,y.sellVol)-Math.min(x.buyVol,x.sellVol):y.flipScore-x.flipScore)
+}
+function renderAll(){
+ const s=getSettings(); let data=sortData(current).filter(x=>x.flipScore>=s.minScore);
+ const top=data.slice(0,10);$("topCards").innerHTML=top.map(actionCard).join("")||`<div class="empty">Geen flips voldoen aan je filters.</div>`;
+ let inv=top.reduce((a,x)=>a+x.invest,0),prof=top.reduce((a,x)=>a+x.profit,0);
+ $("invested").textContent=top.length?fmtG(inv,1):"—";$("profit").textContent=top.length?fmtG(prof,1):"—";
+ $("bestScore").textContent=top.length?Math.max(...top.map(x=>x.flipScore))+"/100":"—";
+ const alerts=top.filter(x=>x.roi>=s.alertRoi&&x.profit>=s.alertProfit);
+ $("alertBox").innerHTML=alerts.map(x=>`<span class="alertpill">⚡ ${esc(x.name)} • ${(x.roi*100).toFixed(1)}% • ${fmtG(x.profit,2)}</span>`).join("");
+
+ const q=$("search").value.trim().toLowerCase(),limit=+$("limit").value||50,fs=favs();
+ const rows=data.filter(x=>!q||x.name.toLowerCase().includes(q)).slice(0,limit).map(x=>{
+   const d=delta(x),[risk,cls]=riskLabel(x),f=fs.has(x.id);
+   return `<tr><td><span class="star ${f?"on":""}" onclick="toggleFav(${x.id})">${f?"★":"☆"}</span></td>
+   <td><b>${esc(x.name)}</b><div class="small">ID ${x.id}</div></td><td class="buycol">${fmtG(x.buy,4)}</td><td class="sellcol">${fmtG(x.sell,4)}</td>
+   <td>${fmtG(x.net,4)}</td><td class="roi">${(x.roi*100).toFixed(1)}%</td>
+   <td><b>${x.flipScore}</b><div class="scorebar"><div class="scorefill" style="width:${x.flipScore}%"></div></div></td>
+   <td>${fmtInt(x.buyVol)}</td><td>${fmtInt(x.sellVol)}</td><td>${dtext(d.bd)}</td><td>${dtext(d.sd)}</td>
+   <td>${fmtInt(x.qty)}</td><td class="gold">${fmtG(x.profit,2)}</td><td class="${cls}">${risk}</td></tr>`
+ }).join("");
+ $("allRows").innerHTML=rows||`<tr><td colspan="14" class="empty">Geen resultaten.</td></tr>`;
+
+ const favRows=data.filter(x=>fs.has(x.id)).map(x=>`<tr><td><span class="star on" onclick="toggleFav(${x.id})">★</span></td>
+  <td><b>${esc(x.name)}</b></td><td class="buycol">${fmtG(x.buy,4)}</td><td class="sellcol">${fmtG(x.sell,4)}</td>
+  <td class="roi">${(x.roi*100).toFixed(1)}%</td><td>${x.flipScore}</td><td>${fmtInt(x.qty)}</td><td class="gold">${fmtG(x.profit,2)}</td></tr>`).join("");
+ $("favRows").innerHTML=favRows||`<tr><td colspan="8" class="empty">Nog geen favorieten.</td></tr>`;
+}
+async function refresh(){
+ const btn=$("refreshBtn");btn.disabled=true;
+ try{
+  previousMap=priorMap();const s=getSettings();$("status").textContent="Live Trading Post-data laden…";
+  const prices=await j("https://api.guildwars2.com/v2/commerce/prices?ids=all");$("scanned").textContent=fmtInt(prices.length);
+  let a=prices.map(p=>{
+   const buy=p.buys?.unit_price||0,sell=p.sells?.unit_price||0,buyVol=p.buys?.quantity||0,sellVol=p.sells?.quantity||0;
+   const net=Math.floor(sell*.85-buy),roi=buy>0?net/buy:-1;return{id:p.id,buy,sell,buyVol,sellVol,net,roi}
+  }).filter(x=>x.buy>0&&x.sell>0&&x.net>0&&x.roi>=s.minRoi&&x.buyVol>=s.minBuyVol&&x.sellVol>=s.minSellVol&&x.buy<=s.maxPrice);
+  $("eligible").textContent=fmtInt(a.length);
+  a.sort((x,y)=>(y.roi*Math.log(1+Math.min(y.buyVol,y.sellVol)))-(x.roi*Math.log(1+Math.min(x.buyVol,x.sellVol))));
+  const ids=[...new Set([...a.slice(0,220).map(x=>x.id),...favs()])],names=await fetchNames(ids);
+  a=a.filter(x=>names.has(x.id)).slice(0,220);
+  a.forEach(x=>{x.name=names.get(x.id);const pos=s.capital*10000*s.maxPos;x.qty=Math.max(1,Math.min(s.maxQty,Math.floor(pos/x.buy)));x.invest=x.qty*x.buy;x.profit=x.qty*x.net});
+  a.forEach(x=>x.flipScore=computeScore(x));
+  current=a;appendSnapshot(current);renderAll();maybeNotify();evaluateAlertSound();
+  $("status").textContent="Bijgewerkt: "+new Date().toLocaleString("nl-NL")+". KOOP en VERKOOP zijn live orderboekprijzen.";
+ }catch(e){console.error(e);$("status").textContent="Laden mislukt: "+e.message+". Bij lokale bestanden kan je browser externe API-calls blokkeren; open via een lokale webserver/hosting."}
+ finally{btn.disabled=false}
+}
+function maybeNotify(){
+ const s=getSettings(),hits=current.filter(x=>x.flipScore>=s.minScore&&x.roi>=s.alertRoi&&x.profit>=s.alertProfit).sort((a,b)=>b.flipScore-a.flipScore);
+ if(!hits.length||!("Notification"in window)||Notification.permission!=="granted")return;
+ const last=+localStorage.getItem("gw2-lastnotify-v3")||0;if(Date.now()-last<15*60*1000)return;
+ const x=hits[0];new Notification("GW2 flip-kans",{body:`${x.name}: KOOP ${fmtG(x.buy,4)} → VERKOOP ${fmtG(x.sell,4)} | ${(x.roi*100).toFixed(1)}% ROI`});
+ localStorage.setItem("gw2-lastnotify-v3",Date.now())
+}
+async function enableNotifications(){if(!("Notification"in window))return $("status").textContent="Browsermeldingen worden niet ondersteund.";try{$("status").textContent="Meldingen: "+await Notification.requestPermission()}catch(e){}}
+
+function drawHistory(){
+ const q=$("historyItem").value.trim().toLowerCase(),h=loadHistory();if(!q)return;
+ let id=/^\d+$/.test(q)?+q:null;
+ if(id===null){for(const s of [...h].reverse()){const z=s.items.find(x=>(x.n||"").toLowerCase()===q);if(z){id=z.id;break}}}
+ if(id===null)return $("histSummary").textContent="Item niet gevonden in lokale historie.";
+ const pts=[];h.forEach(s=>{const x=s.items.find(y=>y.id===id);if(x)pts.push({t:s.t,...x})});
+ if(!pts.length)return $("histSummary").textContent="Nog geen historie voor dit item.";
+ $("histSummary").textContent=`${pts.at(-1).n} • ${pts.length} snapshots`;
+ drawChart($("priceChart"),pts.map(x=>x.b/10000),pts.map(x=>x.s/10000),"g");
+ drawChart($("volumeChart"),pts.map(x=>x.bv),pts.map(x=>x.sv),"")
+}
+function drawChart(c,a,b,suf){
+ const ctx=c.getContext("2d"),W=c.width,H=c.height,p=28;ctx.clearRect(0,0,W,H);ctx.fillStyle="#0a1320";ctx.fillRect(0,0,W,H);
+ const vals=[...a,...b];if(!vals.length)return;let mn=Math.min(...vals),mx=Math.max(...vals);if(mx===mn)mx=mn+1;
+ ctx.strokeStyle="#263447";for(let i=0;i<5;i++){let y=p+(H-2*p)*i/4;ctx.beginPath();ctx.moveTo(p,y);ctx.lineTo(W-p,y);ctx.stroke()}
+ const plot=(arr,col)=>{ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();arr.forEach((v,i)=>{let x=p+(W-2*p)*(arr.length===1?0:i/(arr.length-1)),y=H-p-(v-mn)/(mx-mn)*(H-2*p);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()};
+ plot(a,"#39d98a");plot(b,"#ff6b6b");ctx.font="11px system-ui";ctx.fillStyle="#93a4b8";ctx.fillText(mx.toFixed(suf==="g"?2:0)+suf,4,p);ctx.fillText(mn.toFixed(suf==="g"?2:0)+suf,4,H-p)
+}
+
+let refreshTimer=null, countdownTimer=null, nextRefreshAt=0;
+
+function playAlertSound(){
+  if($("soundAlert")?.value!=="on") return;
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext;
+    const ctx=new Ctx(), osc=ctx.createOscillator(), gain=ctx.createGain();
+    osc.type="sine"; osc.frequency.setValueAtTime(880,ctx.currentTime);
+    gain.gain.setValueAtTime(0.0001,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18,ctx.currentTime+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+0.28);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime+0.3);
+  }catch(e){}
+}
+
+function updateCountdown(){
+  const el=$("countdown"); if(!el) return;
+  if(!nextRefreshAt){el.textContent="—";return}
+  const ms=Math.max(0,nextRefreshAt-Date.now());
+  const s=Math.ceil(ms/1000), m=Math.floor(s/60), sec=s%60;
+  el.textContent=`${m}:${String(sec).padStart(2,"0")}`;
+}
+
+function scheduleAutoRefresh(){
+  if(refreshTimer) clearTimeout(refreshTimer);
+  if(countdownTimer) clearInterval(countdownTimer);
+  refreshTimer=null; countdownTimer=null; nextRefreshAt=0;
+
+  const mins=+$("autoRefresh").value||0;
+  if(mins<=0){ updateCountdown(); return; }
+
+  nextRefreshAt=Date.now()+mins*60*1000;
+  updateCountdown();
+  countdownTimer=setInterval(updateCountdown,1000);
+  refreshTimer=setTimeout(async()=>{
+    await refresh();
+    scheduleAutoRefresh();
+  },mins*60*1000);
+}
+
+function evaluateAlertSound(){
+  const s=getSettings();
+  const hit=current
+    .filter(x=>x.flipScore>=s.minScore&&x.roi>=s.alertRoi&&x.profit>=s.alertProfit)
+    .sort((a,b)=>b.flipScore-a.flipScore)[0];
+  if(!hit) return;
+  const key="gw2-last-sound-alert";
+  const last=+localStorage.getItem(key)||0;
+  if(Date.now()-last<15*60*1000) return;
+  playAlertSound();
+  localStorage.setItem(key,Date.now());
+}
+
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
+let refreshTimer=null, countdownTimer=null, nextRefreshAt=0;
+
+function playAlertSound(){
+  if($("soundAlert")?.value!=="on") return;
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext;
+    const ctx=new Ctx(), osc=ctx.createOscillator(), gain=ctx.createGain();
+    osc.type="sine"; osc.frequency.setValueAtTime(880,ctx.currentTime);
+    gain.gain.setValueAtTime(0.0001,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18,ctx.currentTime+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+0.28);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime+0.3);
+  }catch(e){}
+}
+
+function updateCountdown(){
+  const el=$("countdown"); if(!el) return;
+  if(!nextRefreshAt){el.textContent="—";return}
+  const ms=Math.max(0,nextRefreshAt-Date.now());
+  const s=Math.ceil(ms/1000), m=Math.floor(s/60), sec=s%60;
+  el.textContent=`${m}:${String(sec).padStart(2,"0")}`;
+}
+
+function scheduleAutoRefresh(){
+  if(refreshTimer) clearTimeout(refreshTimer);
+  if(countdownTimer) clearInterval(countdownTimer);
+  refreshTimer=null; countdownTimer=null; nextRefreshAt=0;
+
+  const mins=+$("autoRefresh").value||0;
+  if(mins<=0){ updateCountdown(); return; }
+
+  nextRefreshAt=Date.now()+mins*60*1000;
+  updateCountdown();
+  countdownTimer=setInterval(updateCountdown,1000);
+  refreshTimer=setTimeout(async()=>{
+    await refresh();
+    scheduleAutoRefresh();
+  },mins*60*1000);
+}
+
+function evaluateAlertSound(){
+  const s=getSettings();
+  const hit=current
+    .filter(x=>x.flipScore>=s.minScore&&x.roi>=s.alertRoi&&x.profit>=s.alertProfit)
+    .sort((a,b)=>b.flipScore-a.flipScore)[0];
+  if(!hit) return;
+  const key="gw2-last-sound-alert";
+  const last=+localStorage.getItem(key)||0;
+  if(Date.now()-last<15*60*1000) return;
+  playAlertSound();
+  localStorage.setItem(key,Date.now());
+}
+
+document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.tab).classList.add("active")});
+["search","limit","sortBy","minScore"].forEach(id=>$(id).addEventListener("input",renderAll));
+$("refreshBtn").onclick=async()=>{await refresh();scheduleAutoRefresh()};$("saveBtn").onclick=saveSettings;$("notifyBtn").onclick=enableNotifications;$("drawBtn").onclick=drawHistory;$("autoRefresh").addEventListener("change",()=>{saveSettings();scheduleAutoRefresh()});$("soundAlert").addEventListener("change",saveSettings);
+$("clearHistBtn").onclick=()=>{localStorage.removeItem(HIST_KEY);$("snapCount").textContent="0";$("histSummary").textContent="Historie gewist."};
+loadSettings();$("snapCount").textContent=loadHistory().length;refresh().then(scheduleAutoRefresh);
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch(console.error);
+  });
+}
+</script>
+
+</body>
+</html>
