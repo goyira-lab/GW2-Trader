@@ -6,7 +6,7 @@
   "display": "standalone",
   "background_color": "#08111f",
   "theme_color": "#08111f",
-  "description": "Live Guild Wars 2 Trading Post flip scanner with buy/sell targets, ROI, score, history and alerts.",
+  "description": "Guild Wars 2 Trading Post flip scanner.",
   "icons": [
     {
       "src": "icons/icon-192.png",
