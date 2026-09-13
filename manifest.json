@@ -6,7 +6,7 @@
   "display": "standalone",
   "background_color": "#08111f",
   "theme_color": "#08111f",
-  "description": "Guild Wars 2 Trading Post flip scanner.",
+  "description": "Progressive Guild Wars 2 Trading Post flip scanner with quick and full scans.",
   "icons": [
     {
       "src": "icons/icon-192.png",

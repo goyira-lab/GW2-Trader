@@ -82,7 +82,7 @@ canvas{width:100%;height:230px}
 <body>
 <div class="wrap">
   <h1>GW2 Trading Post Trader Dashboard</h1>
-  <div class="sub">v3 • Ontworpen voor één vraag: <b>wat moet ik kopen, voor hoeveel, en tegen welke prijs moet ik verkopen?</b></div>
+  <div class="sub">v4 • Ontworpen voor één vraag: <b>wat moet ik kopen, voor hoeveel, en tegen welke prijs moet ik verkopen?</b></div>
 
   <div class="panel">
     <div class="controls">
@@ -98,6 +98,12 @@ canvas{width:100%;height:230px}
       <div><label>Alert winst/positie (g)</label><input id="alertProfit" type="number" step=".1" value="2"></div>
       <div><label>Sorteren op</label>
         <select id="sortBy"><option value="score">Flip Score</option><option value="roi">ROI</option><option value="profit">Winst positie</option><option value="liquidity">Liquiditeit</option></select>
+      </div>
+      <div><label>Scanmodus</label>
+        <select id="scanMode">
+          <option value="quick" selected>Snelle scan</option>
+          <option value="full">Volledige scan</option>
+        </select>
       </div>
       <div><button class="primary" id="refreshBtn">Vernieuw live data</button></div>
       <div><button class="ghost" id="saveBtn">Bewaar instellingen</button></div>
@@ -119,6 +125,12 @@ canvas{width:100%;height:230px}
 
     </div>
     <div id="status" class="status">Live data wordt geladen…</div>
+    <div style="margin-top:8px">
+      <div style="height:9px;background:#182334;border-radius:999px;overflow:hidden">
+        <div id="scanProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#5ca9ff,#39d98a);transition:width .2s ease"></div>
+      </div>
+      <div id="scanProgressText" class="status" style="margin-top:5px">Nog niet gestart</div>
+    </div>
     <div id="alertBox" class="alerts"></div>
   </div>
 
@@ -129,7 +141,7 @@ canvas{width:100%;height:230px}
       <div class="kpi"><span>Beste Flip Score</span><b id="bestScore">—</b></div>
       <div class="kpi"><span>Top 10 inzet</span><b id="invested">—</b></div>
       <div class="kpi"><span>Winst/ronde Top 10</span><b id="profit">—</b></div>
-      <div class="kpi"><span>Lokale snapshots</span><b id="snapCount">0</b></div><div class="kpi"><span>Volgende refresh</span><b id="countdown">—</b></div>
+      <div class="kpi"><span>Lokale snapshots</span><b id="snapCount">0</b></div><div class="kpi"><span>Volgende refresh</span><b id="countdown">—</b></div><div class="kpi"><span>Scanstatus</span><b id="scanKpi">—</b></div>
     </div>
   </div>
 
@@ -186,7 +198,9 @@ canvas{width:100%;height:230px}
       <p><b>Flip Score (0–100)</b> combineert ROI, orderboekliquiditeit, spreadkwaliteit, positiewinst en stabiliteit ten opzichte van de vorige snapshot. Daardoor komen extreem hoge maar onrealistische margins minder snel bovenaan.</p>
       <p><b>Risico</b> is een praktische indicatie: laag bij hoge liquiditeit en gezonde spread, middel bij matige liquiditeit of grote bewegingen, hoog bij dunne/orderboekgevoelige items.</p>
       <p><b>Buy Δ / Sell Δ</b> zijn veranderingen in orderboekhoeveelheden ten opzichte van de vorige lokale snapshot. Dit is nuttige activiteitsschatting, maar géén echte 24-uurs transactietelling.</p>
-      <p><b>Historie</b> wordt lokaal in je browser opgebouwd. De officiële GW2 API biedt geen volledige historische transactiereeks.</p>
+      
+      <p><b>Snelle scan</b> controleert eerst maximaal ongeveer 2.400 items en toont tijdens het scannen al resultaten. <b>Volledige scan</b> gaat daarna door over de hele Trading Post. Als een API-batch faalt, wordt die overgeslagen zodat de site niet blijft hangen.</p>
+<p><b>Historie</b> wordt lokaal in je browser opgebouwd. De officiële GW2 API biedt geen volledige historische transactiereeks.</p>
     </div>
   </div>
 </div>
@@ -207,7 +221,7 @@ function getSettings(){return {
  alertProfit:(+$("alertProfit").value||2)*10000,sortBy:$("sortBy").value
 }}
 function saveSettings(){
- const ids=["capital","minRoi","minBuyVol","minSellVol","maxPrice","maxPos","maxQty","minScore","alertRoi","alertProfit","sortBy","autoRefresh","soundAlert"];
+ const ids=["capital","minRoi","minBuyVol","minSellVol","maxPrice","maxPos","maxQty","minScore","alertRoi","alertProfit","sortBy","autoRefresh","soundAlert","scanMode"];
  const o={};ids.forEach(id=>o[id]=$(id).value);localStorage.setItem(SETTINGS_KEY,JSON.stringify(o));$("status").textContent="Instellingen opgeslagen."
 }
 function loadSettings(){try{const o=JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}");Object.entries(o).forEach(([k,v])=>{if($(k))$(k).value=v})}catch(e){}}
@@ -216,7 +230,15 @@ function setFavs(s){localStorage.setItem(FAV_KEY,JSON.stringify([...s]))}
 function toggleFav(id){const s=favs();s.has(id)?s.delete(id):s.add(id);setFavs(s);renderAll()}
 function copyText(t){navigator.clipboard?.writeText(t);$("status").textContent="Gekopieerd: "+t}
 
-async function j(url){const r=await fetch(url);if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+async function j(url, timeoutMs=12000){
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),timeoutMs);
+  try{
+    const r=await fetch(url,{signal:ctrl.signal,cache:"no-store"});
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    return await r.json();
+  } finally { clearTimeout(timer); }
+}
 function chunks(a,n){let o=[];for(let i=0;i<a.length;i+=n)o.push(a.slice(i,i+n));return o}
 async function fetchNames(ids){
  const m=new Map(),cs=chunks(ids,200);
@@ -316,35 +338,156 @@ function renderAll(){
   <td class="roi">${(x.roi*100).toFixed(1)}%</td><td>${x.flipScore}</td><td>${fmtInt(x.qty)}</td><td class="gold">${fmtG(x.profit,2)}</td></tr>`).join("");
  $("favRows").innerHTML=favRows||`<tr><td colspan="8" class="empty">Nog geen favorieten.</td></tr>`;
 }
-async function refresh(){
- const btn=$("refreshBtn");btn.disabled=true;
- try{
-  previousMap=priorMap();const s=getSettings();$("status").textContent="Live Trading Post-data laden…";
-  const ids=await j("https://api.guildwars2.com/v2/commerce/prices");
-  $("status").textContent=`${fmtInt(ids.length)} Trading Post-items gevonden. Live prijzen laden…`;
-  const priceChunks=chunks(ids,200);
-  const prices=[];
-  for(let i=0;i<priceChunks.length;i+=5){
-    const batch=priceChunks.slice(i,i+5);
-    const results=await Promise.all(batch.map(c=>j("https://api.guildwars2.com/v2/commerce/prices?ids="+c.join(","))));
-    results.forEach(arr=>prices.push(...arr));
-    $("status").textContent=`Live prijzen laden… ${Math.min(i+5,priceChunks.length)}/${priceChunks.length} batches`;
+
+let scanToken=0;
+
+function setProgress(done,total,phase="Scannen"){
+  const pct=total?Math.round(done/total*100):0;
+  $("scanProgressBar").style.width=pct+"%";
+  $("scanProgressText").textContent=`${phase}: ${fmtInt(done)} / ${fmtInt(total)} (${pct}%)`;
+  $("scanKpi").textContent=`${pct}%`;
+}
+
+function buildCandidate(p,s){
+  const buy=p.buys?.unit_price||0, sell=p.sells?.unit_price||0;
+  const buyVol=p.buys?.quantity||0, sellVol=p.sells?.quantity||0;
+  const net=Math.floor(sell*.85-buy), roi=buy>0?net/buy:-1;
+  if(!(buy>0&&sell>0&&net>0&&roi>=s.minRoi&&buyVol>=s.minBuyVol&&sellVol>=s.minSellVol&&buy<=s.maxPrice)) return null;
+  return {id:p.id,buy,sell,buyVol,sellVol,net,roi};
+}
+
+async function fetchPriceChunk(idChunk){
+  try{
+    return await j("https://api.guildwars2.com/v2/commerce/prices?ids="+idChunk.join(","),10000);
+  }catch(e){
+    console.warn("Price chunk failed",e);
+    return [];
   }
-  $("scanned").textContent=fmtInt(prices.length);
-  let a=prices.map(p=>{
-   const buy=p.buys?.unit_price||0,sell=p.sells?.unit_price||0,buyVol=p.buys?.quantity||0,sellVol=p.sells?.quantity||0;
-   const net=Math.floor(sell*.85-buy),roi=buy>0?net/buy:-1;return{id:p.id,buy,sell,buyVol,sellVol,net,roi}
-  }).filter(x=>x.buy>0&&x.sell>0&&x.net>0&&x.roi>=s.minRoi&&x.buyVol>=s.minBuyVol&&x.sellVol>=s.minSellVol&&x.buy<=s.maxPrice);
-  $("eligible").textContent=fmtInt(a.length);
-  a.sort((x,y)=>(y.roi*Math.log(1+Math.min(y.buyVol,y.sellVol)))-(x.roi*Math.log(1+Math.min(x.buyVol,x.sellVol))));
-  const ids=[...new Set([...a.slice(0,220).map(x=>x.id),...favs()])],names=await fetchNames(ids);
-  a=a.filter(x=>names.has(x.id)).slice(0,220);
-  a.forEach(x=>{x.name=names.get(x.id);const pos=s.capital*10000*s.maxPos;x.qty=Math.max(1,Math.min(s.maxQty,Math.floor(pos/x.buy)));x.invest=x.qty*x.buy;x.profit=x.qty*x.net});
+}
+
+async function fetchNamesSafe(ids){
+  const m=new Map(), cs=chunks(ids,200);
+  for(let i=0;i<cs.length;i++){
+    try{
+      const a=await j("https://api.guildwars2.com/v2/items?ids="+cs[i].join(","),10000);
+      a.forEach(x=>m.set(x.id,x.name));
+    }catch(e){ console.warn("Name chunk failed",e); }
+  }
+  return m;
+}
+
+function finalizeCandidates(raw,s,names){
+  let a=raw.filter(x=>names.has(x.id));
+  a.forEach(x=>{
+    x.name=names.get(x.id);
+    const pos=s.capital*10000*s.maxPos;
+    x.qty=Math.max(1,Math.min(s.maxQty,Math.floor(pos/x.buy)));
+    x.invest=x.qty*x.buy;
+    x.profit=x.qty*x.net;
+  });
   a.forEach(x=>x.flipScore=computeScore(x));
-  current=a;appendSnapshot(current);renderAll();maybeNotify();evaluateAlertSound();
-  $("status").textContent="Bijgewerkt: "+new Date().toLocaleString("nl-NL")+". KOOP en VERKOOP zijn live orderboekprijzen.";
- }catch(e){console.error(e);$("status").textContent="Laden mislukt: "+e.message+". Dit is meestal een tijdelijke GW2 API- of netwerkfout. Probeer opnieuw.";}
- finally{btn.disabled=false}
+  return a;
+}
+
+async function progressiveScan(allIds,s,myToken){
+  const chunked=chunks(allIds,200);
+  const quickCount=Math.min(12,chunked.length); // up to 2400 items first
+  let collected=[];
+  let failed=0;
+
+  async function processRange(start,end,phase){
+    const concurrency=4;
+    let done=start;
+    for(let i=start;i<end;i+=concurrency){
+      if(myToken!==scanToken) return false;
+      const batch=chunked.slice(i,Math.min(i+concurrency,end));
+      const results=await Promise.all(batch.map(fetchPriceChunk));
+      for(const arr of results){
+        if(!arr.length) failed++;
+        for(const p of arr){
+          const c=buildCandidate(p,s);
+          if(c) collected.push(c);
+        }
+      }
+      done=Math.min(i+concurrency,end);
+      setProgress(done,chunked.length,phase);
+
+      // Live-update after each batch using top candidate ids
+      let shortlist=[...collected]
+        .sort((x,y)=>(y.roi*Math.log(1+Math.min(y.buyVol,y.sellVol)))-(x.roi*Math.log(1+Math.min(x.buyVol,x.sellVol))))
+        .slice(0,120);
+      const names=await fetchNamesSafe([...new Set([...shortlist.map(x=>x.id),...favs()])]);
+      current=finalizeCandidates(shortlist,s,names);
+      renderAll();
+      $("eligible").textContent=fmtInt(collected.length);
+      $("status").textContent=`${phase} actief • ${fmtInt(collected.length)} potentiële flips gevonden • ${failed} batchfout(en)`;
+    }
+    return true;
+  }
+
+  // QUICK PASS
+  await processRange(0,quickCount,"Snelle scan");
+  if(myToken!==scanToken) return;
+
+  // If user selected quick scan, stop here
+  if(($("scanMode")?.value||"quick")==="quick"){
+    setProgress(quickCount,quickCount,"Snelle scan voltooid");
+    $("scanKpi").textContent="Klaar";
+    appendSnapshot(current);
+    maybeNotify(); evaluateAlertSound();
+    return;
+  }
+
+  // FULL BACKGROUND PASS
+  await processRange(quickCount,chunked.length,"Volledige scan");
+  if(myToken!==scanToken) return;
+
+  // final, better shortlist
+  let shortlist=[...collected]
+    .sort((x,y)=>(y.roi*Math.log(1+Math.min(y.buyVol,y.sellVol)))-(x.roi*Math.log(1+Math.min(x.buyVol,x.sellVol))))
+    .slice(0,220);
+  const names=await fetchNamesSafe([...new Set([...shortlist.map(x=>x.id),...favs()])]);
+  current=finalizeCandidates(shortlist,s,names);
+  appendSnapshot(current); renderAll(); maybeNotify(); evaluateAlertSound();
+  setProgress(chunked.length,chunked.length,"Volledige scan voltooid");
+  $("scanKpi").textContent="Klaar";
+  $("status").textContent=`Volledige scan gereed • ${fmtInt(allIds.length)} items gecontroleerd • ${fmtInt(collected.length)} potentiële flips • ${failed} batchfout(en)`;
+}
+
+async function refresh(){
+ const btn=$("refreshBtn");
+ btn.disabled=true;
+ const myToken=++scanToken;
+ try{
+   previousMap=priorMap();
+   const s=getSettings();
+   $("status").textContent="Trading Post itemlijst laden…";
+   $("scanProgressBar").style.width="0%";
+   $("scanProgressText").textContent="Voorbereiden…";
+   $("scanKpi").textContent="Start";
+
+   const ids=await j("https://api.guildwars2.com/v2/commerce/prices",12000);
+   if(myToken!==scanToken) return;
+   $("scanned").textContent="0";
+   $("eligible").textContent="0";
+   $("status").textContent=`${fmtInt(ids.length)} Trading Post-items gevonden. Scan gestart…`;
+
+   // Shuffle/rotate ids to avoid always scanning exactly the same first segment in quick mode
+   const seed=Math.floor(Date.now()/(10*60*1000));
+   const offset=ids.length ? (seed*997)%ids.length : 0;
+   const rotated=ids.slice(offset).concat(ids.slice(0,offset));
+
+   await progressiveScan(rotated,s,myToken);
+   if(myToken!==scanToken) return;
+   $("scanned").textContent=fmtInt(($("scanMode")?.value||"quick")==="quick" ? Math.min(2400,ids.length) : ids.length);
+ }catch(e){
+   console.error(e);
+   $("status").textContent="Laden mislukt: "+(e.name==="AbortError"?"GW2 API timeout":e.message)+". Probeer opnieuw.";
+   $("scanProgressText").textContent="Scan afgebroken";
+   $("scanKpi").textContent="Fout";
+ }finally{
+   if(myToken===scanToken) btn.disabled=false;
+ }
 }
 function maybeNotify(){
  const s=getSettings(),hits=current.filter(x=>x.flipScore>=s.minScore&&x.roi>=s.alertRoi&&x.profit>=s.alertProfit).sort((a,b)=>b.flipScore-a.flipScore);
@@ -485,7 +628,7 @@ function evaluateAlertSound(){
 
 document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.tab).classList.add("active")});
 ["search","limit","sortBy","minScore"].forEach(id=>$(id).addEventListener("input",renderAll));
-$("refreshBtn").onclick=async()=>{await refresh();scheduleAutoRefresh()};$("saveBtn").onclick=saveSettings;$("notifyBtn").onclick=enableNotifications;$("drawBtn").onclick=drawHistory;$("autoRefresh").addEventListener("change",()=>{saveSettings();scheduleAutoRefresh()});$("soundAlert").addEventListener("change",saveSettings);
+$("refreshBtn").onclick=async()=>{await refresh();scheduleAutoRefresh()};$("saveBtn").onclick=saveSettings;$("notifyBtn").onclick=enableNotifications;$("drawBtn").onclick=drawHistory;$("autoRefresh").addEventListener("change",()=>{saveSettings();scheduleAutoRefresh()});$("soundAlert").addEventListener("change",saveSettings);$("scanMode").addEventListener("change",saveSettings);
 $("clearHistBtn").onclick=()=>{localStorage.removeItem(HIST_KEY);$("snapCount").textContent="0";$("histSummary").textContent="Historie gewist."};
 loadSettings();$("snapCount").textContent=loadHistory().length;refresh().then(scheduleAutoRefresh);
 </script>
