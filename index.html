@@ -25,7 +25,8 @@ button{border:0;border-radius:9px;padding:10px 13px;font-weight:750;cursor:point
 .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:9px}
 .kpi{background:#0a1320;border:1px solid var(--line);border-radius:11px;padding:11px}
 .kpi span{font-size:11px;color:var(--muted)}.kpi b{display:block;margin-top:3px;font-size:19px}
-.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.tab{background:#1b293d;color:#cbd5e1}.tab.active{background:#30415a;color:#fff}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.tab{background:#1b293d;color:#cbd5e1}.tab.active{background:#30415a;color:#fff}
+.toprange{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px;padding:9px;border:1px solid var(--line);border-radius:12px;background:#0b1523}.rangebtn{background:#18263a;color:#cbd5e1;border:1px solid #26374d;min-width:86px}.rangebtn.active{background:#30415a;color:#fff;border-color:#5ca9ff;box-shadow:0 0 0 1px rgba(92,169,255,.25) inset}
 .view{display:none}.view.active{display:block}
 .topcards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
 .card{background:#0a1320;border:1px solid var(--line);border-radius:14px;padding:13px;position:relative}
@@ -82,7 +83,7 @@ canvas{width:100%;height:230px}
 <body>
 <div class="wrap">
   <h1>GW2 Trading Post Trader Dashboard</h1>
-  <div class="sub">v4.1 • Ontworpen voor één vraag: <b>wat moet ik kopen, voor hoeveel, en tegen welke prijs moet ik verkopen?</b></div>
+  <div class="sub">v4.2 • Ontworpen voor één vraag: <b>wat moet ik kopen, voor hoeveel, en tegen welke prijs moet ik verkopen?</b></div>
 
   <div class="panel">
     <div class="controls">
@@ -139,8 +140,8 @@ canvas{width:100%;height:230px}
       <div class="kpi"><span>Items gescand</span><b id="scanned">0</b></div>
       <div class="kpi"><span>Geschikte flips</span><b id="eligible">0</b></div>
       <div class="kpi"><span>Beste Flip Score</span><b id="bestScore">—</b></div>
-      <div class="kpi"><span>Top 10 inzet</span><b id="invested">—</b></div>
-      <div class="kpi"><span>Winst/ronde Top 10</span><b id="profit">—</b></div>
+      <div class="kpi"><span>Top 50 inzet</span><b id="invested">—</b></div>
+      <div class="kpi"><span>Winst/ronde Top 50</span><b id="profit">—</b></div>
       <div class="kpi"><span>Lokale snapshots</span><b id="snapCount">0</b></div><div class="kpi"><span>Volgende refresh</span><b id="countdown">—</b></div><div class="kpi"><span>Scanstatus</span><b id="scanKpi">—</b></div>
     </div>
   </div>
@@ -155,6 +156,13 @@ canvas{width:100%;height:230px}
     </div>
 
     <div id="now" class="view active">
+      <div class="toprange" id="topRangeToolbar" aria-label="Top 50 selectie">
+        <button class="rangebtn active" data-start="0">1 - 10</button>
+        <button class="rangebtn" data-start="10">11 - 20</button>
+        <button class="rangebtn" data-start="20">21 - 30</button>
+        <button class="rangebtn" data-start="30">31 - 40</button>
+        <button class="rangebtn" data-start="40">41 - 50</button>
+      </div>
       <div id="topCards" class="topcards"></div>
     </div>
 
@@ -209,6 +217,7 @@ canvas{width:100%;height:230px}
 const $=id=>document.getElementById(id);
 const SETTINGS_KEY="gw2-trader-settings-v3", FAV_KEY="gw2-trader-favs-v1", HIST_KEY="gw2-trader-history-v3";
 let current=[], previousMap=new Map();
+let topRangeStart=0;
 
 function fmtG(c,d=4){
   c=Math.max(0,Math.round(Number(c)||0));
@@ -319,11 +328,13 @@ function sortData(a){
 }
 function renderAll(){
  const s=getSettings(); let data=sortData(current).filter(x=>x.flipScore>=s.minScore);
- const top=data.slice(0,10);$("topCards").innerHTML=top.map(actionCard).join("")||`<div class="empty">Geen flips voldoen aan je filters.</div>`;
- let inv=top.reduce((a,x)=>a+x.invest,0),prof=top.reduce((a,x)=>a+x.profit,0);
- $("invested").textContent=top.length?fmtG(inv,1):"—";$("profit").textContent=top.length?fmtG(prof,1):"—";
- $("bestScore").textContent=top.length?Math.max(...top.map(x=>x.flipScore))+"/100":"—";
- const alerts=top.filter(x=>x.roi>=s.alertRoi&&x.profit>=s.alertProfit);
+ const top50=data.slice(0,50);
+ const visibleTop=top50.slice(topRangeStart,topRangeStart+10);
+ $("topCards").innerHTML=visibleTop.map(actionCard).join("")||`<div class="empty">Geen flips in deze Top 50-groep.</div>`;
+ let inv=top50.reduce((a,x)=>a+x.invest,0),prof=top50.reduce((a,x)=>a+x.profit,0);
+ $("invested").textContent=top50.length?fmtG(inv,1):"—";$("profit").textContent=top50.length?fmtG(prof,1):"—";
+ $("bestScore").textContent=top50.length?Math.max(...top50.map(x=>x.flipScore))+"/100":"—";
+ const alerts=top50.filter(x=>x.roi>=s.alertRoi&&x.profit>=s.alertProfit);
  $("alertBox").innerHTML=alerts.map(x=>`<span class="alertpill">⚡ ${esc(x.name)} • ${(x.roi*100).toFixed(1)}% • ${fmtG(x.profit,2)}</span>`).join("");
 
  const q=$("search").value.trim().toLowerCase(),limit=+$("limit").value||50,fs=favs();
@@ -632,6 +643,12 @@ function evaluateAlertSound(){
 }
 
 document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.tab).classList.add("active")});
+document.querySelectorAll(".rangebtn").forEach(btn=>btn.addEventListener("click",()=>{
+  topRangeStart=+btn.dataset.start||0;
+  document.querySelectorAll(".rangebtn").forEach(x=>x.classList.remove("active"));
+  btn.classList.add("active");
+  renderAll();
+}));
 ["search","limit","sortBy","minScore"].forEach(id=>$(id).addEventListener("input",renderAll));
 $("refreshBtn").onclick=async()=>{await refresh();scheduleAutoRefresh()};$("saveBtn").onclick=saveSettings;$("notifyBtn").onclick=enableNotifications;$("drawBtn").onclick=drawHistory;$("autoRefresh").addEventListener("change",()=>{saveSettings();scheduleAutoRefresh()});$("soundAlert").addEventListener("change",saveSettings);$("scanMode").addEventListener("change",saveSettings);
 $("clearHistBtn").onclick=()=>{localStorage.removeItem(HIST_KEY);$("snapCount").textContent="0";$("histSummary").textContent="Historie gewist."};
