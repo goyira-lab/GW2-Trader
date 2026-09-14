@@ -83,7 +83,7 @@ canvas{width:100%;height:230px}
 <body>
 <div class="wrap">
   <h1>GW2 Trading Post Trader Dashboard</h1>
-  <div class="sub">v4.2 • Ontworpen voor één vraag: <b>wat moet ik kopen, voor hoeveel, en tegen welke prijs moet ik verkopen?</b></div>
+  <div class="sub">v4.3 • Top 50 gericht op actuele crafting- en adventure-items • Ontworpen voor één vraag: <b>wat moet ik kopen, voor hoeveel, en tegen welke prijs moet ik verkopen?</b></div>
 
   <div class="panel">
     <div class="controls">
@@ -201,6 +201,7 @@ canvas{width:100%;height:230px}
     </div>
 
     <div id="help" class="view help">
+      <p><b>Top 50 praktisch</b> = alleen verhandelbare items die rechtstreeks nuttig zijn voor crafting of adventuring: crafting materials, food, utility consumables, runes, sigils en gems. De lijst wordt nog steeds live op prijs, volume, ROI en Flip Score beoordeeld.</p>
       <p><b>KOOP</b> = de maximale buy-orderprijs die de scanner nu adviseert. <b>VERKOOP</b> = de huidige sell-listingprijs waarop de berekening is gebaseerd.</p>
       <p><b>Nettowinst</b> = verkoopprijs × 0,85 − koopprijs. De 15% Trading Post-kosten zijn dus verwerkt.</p>
       <p><b>Flip Score (0–100)</b> combineert ROI, orderboekliquiditeit, spreadkwaliteit, positiewinst en stabiliteit ten opzichte van de vorige snapshot. Daardoor komen extreem hoge maar onrealistische margins minder snel bovenaan.</p>
@@ -297,7 +298,7 @@ function actionCard(x,i){
  const d=delta(x),[risk,cls]=riskLabel(x),f=favs().has(x.id);
  return `<div class="card ${x.roi>=getSettings().alertRoi&&x.profit>=getSettings().alertProfit?"alertrow":""}">
   <div class="cardhead">
-   <div><div class="itemname">${i+1}. ${esc(x.name)}</div><div class="meta">ID ${x.id} • Flip Score ${x.flipScore}/100</div></div>
+   <div><div class="itemname">${i+1}. ${esc(x.name)}</div><div class="meta">${esc(x.useLabel||"Overig")} • ID ${x.id} • Flip Score ${x.flipScore}/100</div></div>
    <span class="star ${f?"on":""}" onclick="toggleFav(${x.id})">${f?"★":"☆"}</span>
   </div>
   <div class="tradegrid">
@@ -328,9 +329,10 @@ function sortData(a){
 }
 function renderAll(){
  const s=getSettings(); let data=sortData(current).filter(x=>x.flipScore>=s.minScore);
- const top50=data.slice(0,50);
+ const useful=data.filter(x=>x.useful);
+ const top50=[...useful].sort((x,y)=>((y.flipScore+(y.utilityBoost||0))-(x.flipScore+(x.utilityBoost||0)))).slice(0,50);
  const visibleTop=top50.slice(topRangeStart,topRangeStart+10);
- $("topCards").innerHTML=visibleTop.map(actionCard).join("")||`<div class="empty">Geen flips in deze Top 50-groep.</div>`;
+ $("topCards").innerHTML=visibleTop.map(actionCard).join("")||`<div class="empty">Geen geschikte crafting/adventure-flips in deze Top 50-groep.</div>`;
  let inv=top50.reduce((a,x)=>a+x.invest,0),prof=top50.reduce((a,x)=>a+x.profit,0);
  $("invested").textContent=top50.length?fmtG(inv,1):"—";$("profit").textContent=top50.length?fmtG(prof,1):"—";
  $("bestScore").textContent=top50.length?Math.max(...top50.map(x=>x.flipScore))+"/100":"—";
@@ -381,21 +383,39 @@ async function fetchPriceChunk(idChunk){
   }
 }
 
-async function fetchNamesSafe(ids){
+async function fetchItemsSafe(ids){
   const m=new Map(), cs=chunks(ids,200);
   for(let i=0;i<cs.length;i++){
     try{
       const a=await j("https://api.guildwars2.com/v2/items?ids="+cs[i].join(","),10000);
-      a.forEach(x=>m.set(x.id,x.name));
-    }catch(e){ console.warn("Name chunk failed",e); }
+      a.forEach(x=>m.set(x.id,x));
+    }catch(e){ console.warn("Item metadata chunk failed",e); }
   }
   return m;
 }
 
-function finalizeCandidates(raw,s,names){
-  let a=raw.filter(x=>names.has(x.id));
+function usefulClass(item){
+  if(!item) return {useful:false,label:"Overig",boost:0};
+  if(item.type==="CraftingMaterial") return {useful:true,label:"Crafting",boost:12};
+  if(item.type==="Consumable"){
+    const t=item.details?.type||"";
+    if(t==="Food") return {useful:true,label:"Food",boost:10};
+    if(t==="Utility") return {useful:true,label:"Utility",boost:10};
+  }
+  if(item.type==="UpgradeComponent"){
+    const t=item.details?.type||"";
+    if(["Rune","Sigil","Gem"].includes(t)) return {useful:true,label:t,boost:8};
+  }
+  return {useful:false,label:"Overig",boost:0};
+}
+
+function finalizeCandidates(raw,s,items){
+  let a=raw.filter(x=>items.has(x.id));
   a.forEach(x=>{
-    x.name=names.get(x.id);
+    const item=items.get(x.id);
+    x.name=item.name;
+    const u=usefulClass(item);
+    x.useful=u.useful; x.useLabel=u.label; x.utilityBoost=u.boost;
     const pos=s.capital*10000*s.maxPos;
     x.qty=Math.max(1,Math.min(s.maxQty,Math.floor(pos/x.buy)));
     x.invest=x.qty*x.buy;
@@ -431,9 +451,9 @@ async function progressiveScan(allIds,s,myToken){
       // Live-update after each batch using top candidate ids
       let shortlist=[...collected]
         .sort((x,y)=>(y.roi*Math.log(1+Math.min(y.buyVol,y.sellVol)))-(x.roi*Math.log(1+Math.min(x.buyVol,x.sellVol))))
-        .slice(0,120);
-      const names=await fetchNamesSafe([...new Set([...shortlist.map(x=>x.id),...favs()])]);
-      current=finalizeCandidates(shortlist,s,names);
+        .slice(0,320);
+      const items=await fetchItemsSafe([...new Set([...shortlist.map(x=>x.id),...favs()])]);
+      current=finalizeCandidates(shortlist,s,items);
       renderAll();
       $("eligible").textContent=fmtInt(collected.length);
       $("status").textContent=`${phase} actief • ${fmtInt(collected.length)} potentiële flips gevonden • ${failed} batchfout(en)`;
@@ -461,9 +481,9 @@ async function progressiveScan(allIds,s,myToken){
   // final, better shortlist
   let shortlist=[...collected]
     .sort((x,y)=>(y.roi*Math.log(1+Math.min(y.buyVol,y.sellVol)))-(x.roi*Math.log(1+Math.min(x.buyVol,x.sellVol))))
-    .slice(0,220);
-  const names=await fetchNamesSafe([...new Set([...shortlist.map(x=>x.id),...favs()])]);
-  current=finalizeCandidates(shortlist,s,names);
+    .slice(0,600);
+  const items=await fetchItemsSafe([...new Set([...shortlist.map(x=>x.id),...favs()])]);
+  current=finalizeCandidates(shortlist,s,items);
   appendSnapshot(current); renderAll(); maybeNotify(); evaluateAlertSound();
   setProgress(chunked.length,chunked.length,"Volledige scan voltooid");
   $("scanKpi").textContent="Klaar";
